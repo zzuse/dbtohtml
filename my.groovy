@@ -102,41 +102,62 @@ String dataType(type) {
 
 // Scan database to build model of tables and columns
 //def sql = Sql.newInstance(DB_URL, DB_USERNAME, DB_PASSWORD, 'com.mysql.jdbc.Driver')
+
+names = []
 def sql = Sql.newInstance(DB_URL, DB_USERNAME, DB_PASSWORD, 'oracle.jdbc.OracleDriver')
+String getViewTokenSql = "select * from USER_VIEWS"
+sql.eachRow(getViewTokenSql) { row ->
+    String name = row['VIEW_NAME']
+        println "gather ${name}"
+    names << [say:name,type:"VIEW"]
+}
+String getTableTokenSql = "select * from USER_TABLES"
+sql.eachRow(getTableTokenSql) { row ->
+    String name = row['TABLE_NAME']
+        println "gather ${name}"
+    names << [say:name,type:"TABLE"]
+}
 tables = []
 meta = sql.connection.metaData
-metaTables = meta.getTables(null, null, "%", "TABLE")
-new GroovyResultSetExtension(metaTables).eachRow {
-  table = new Table()
-  table.name = it.table_name
-  keys = []
-  metaKeys = meta.getPrimaryKeys(null, null, it.table_name)
-  new GroovyResultSetExtension(metaKeys).eachRow {
-    keys << it.column_name
-  }
-  fks = [:]
-  metaFks = meta.getImportedKeys(null, null, it.table_name)
-  new GroovyResultSetExtension(metaFks).eachRow {
-    fks[it.fkcolumn_name] = [
-      'table' : it.pktable_name,
-      'column' : it.pkcolumn_name
-    ]
-  }
-  metaColumns = meta.getColumns(null, null, it.table_name, "%")
-  new GroovyResultSetExtension(metaColumns).eachRow {
-    column = new Column()
-    column.key = keys.contains(it.column_name)
-    column.name = it.column_name
-    column.type = dataType(it.data_type)
-    column.size = it.column_size
-    column.required = (it.is_nullable == 'NO')
-    if (fks[column.name]) {
-      column.fkTable = fks[column.name].table
-      column.fkColumn = fks[column.name].column
-    }
-    table.columns << column
-  }
-  tables << table
+for (name in names) {
+    println "process ${name}"
+        metaTables = meta.getTables(null, null, name.say, name.type)
+        new GroovyResultSetExtension(metaTables).eachRow {
+            table = new Table()
+                table.name = it.table_name
+                keys = []
+                metaKeys = meta.getPrimaryKeys(null, null, it.table_name)
+                new GroovyResultSetExtension(metaKeys).eachRow {
+                    keys << it.column_name
+                }
+            metaKeys.close()
+                fks = [:]
+                metaFks = meta.getImportedKeys(null, null, it.table_name)
+                new GroovyResultSetExtension(metaFks).eachRow {
+                    fks[it.fkcolumn_name] = [
+                        'table' : it.pktable_name,
+                        'column' : it.pkcolumn_name
+                            ]
+                }
+            metaFks.close()
+                metaColumns = meta.getColumns(null, null, it.table_name, "%")
+                new GroovyResultSetExtension(metaColumns).eachRow {
+                    column = new Column()
+                        column.key = keys.contains(it.column_name)
+                        column.name = it.column_name
+                        column.type = dataType((int)it.data_type)
+                        column.size = it.column_size
+                        column.required = (it.is_nullable == 'NO')
+                        if (fks[column.name]) {
+                            column.fkTable = fks[column.name].table
+                                column.fkColumn = fks[column.name].column
+                        }
+                    table.columns << column
+                }
+            metaColumns.close()
+                tables << table
+        }
+    metaTables.close()
 }
 
 // Write our output to file system
