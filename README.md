@@ -23,3 +23,5 @@ favicon = "https://example.com/favicon.ico"
 ```
 
 If the db_password is not provided in config, you will be prompted for the password.
+
+groovy my.groovy  conf.ini
